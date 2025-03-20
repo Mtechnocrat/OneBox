@@ -86,6 +86,8 @@ const reconnectIfIdle = () => {
 };
 
 // ✅ Fetch and Store New Emails in Elasticsearch
+const { classifyEmail } = require('./aiService'); // Import AI model for classification
+
 const fetchLatestEmail = () => {
   imap.search(['ALL'], (err, results) => {
     if (err || results.length === 0) {
@@ -111,13 +113,17 @@ const fetchLatestEmail = () => {
               return;
             }
 
+            // Use AI to classify email content
+            const category = await classifyEmail(parsed.text || "");
+
             console.log('\n📧 New Email Received 📧');
             console.log(`🔹 Subject: ${parsed.subject}`);
             console.log(`🔹 From: ${parsed.from?.text || "Unknown Sender"}`);
             console.log(`🔹 Date: ${parsed.date}`);
+            console.log(`🔹 Category: ${category}`); // ✅ AI-generated category
             console.log(`🔹 Body Preview: ${parsed.text?.substring(0, 200) || "(No text content)"}...`);
 
-            // Store email in Elasticsearch
+            // Store email in Elasticsearch with category
             await storeEmail({
               subject: parsed.subject,
               from: parsed.from?.text || "Unknown Sender",
@@ -125,6 +131,7 @@ const fetchLatestEmail = () => {
               body: parsed.text || "(No text content)",
               folder: "INBOX",
               account: imapConfig.user,
+              category, // ✅ Add AI-generated category
             });
           });
         });
@@ -141,10 +148,11 @@ const fetchLatestEmail = () => {
   });
 };
 
+
 // ✅ Function to Reconnect IMAP if Disconnected
 const reconnectImap = () => {
   console.log('🔄 Reconnecting to IMAP server in 5 seconds...');
-  setTimeout(startImapConnection, 5000);
+  setTimeout(startImapConnection, 5000000);
 };
 
 module.exports = { startImapConnection };

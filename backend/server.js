@@ -25,3 +25,12 @@ app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 const { checkElasticsearchConnection } = require('./config/db');
 
 checkElasticsearchConnection();
+
+const { loadModel } = require('./services/aiService');
+
+const startServer = async () => {
+  await loadModel(); // Load AI model on startup
+  startImapConnection();
+};
+
+startServer();

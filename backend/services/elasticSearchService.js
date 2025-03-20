@@ -1,6 +1,9 @@
 const { elasticClient } = require('../config/db');
 
-
+/**
+ * Ensure the Elasticsearch index exists before storing emails.
+ * This should be called only once when the server starts.
+ */
 const ensureIndexExists = async () => {
   const exists = await elasticClient.indices.exists({ index: 'emails' });
   if (!exists.body) {
@@ -15,7 +18,10 @@ const ensureIndexExists = async () => {
             from: { type: 'keyword' },
             to: { type: 'keyword' },
             date: { type: 'date' },
-            body: { type: 'text' }
+            body: { type: 'text' },
+            folder: { type: 'keyword' },
+            account: { type: 'keyword' },
+            category: { type: 'keyword' }, // ✅ Added AI categorization field
           }
         }
       }
@@ -23,32 +29,30 @@ const ensureIndexExists = async () => {
   }
 };
 
-const indexEmail = async (emailData) => {
-  try {
-    await ensureIndexExists();
-    console.log('📩 Indexing email:', emailData);
-    
-    await elasticClient.index({
-      index: 'emails',
-      body: emailData,
-    });
-    console.log('✅ Email indexed successfully');
-  } catch (error) {
-    console.error('❌ Failed to index email:', error);
-  }
-};
+/**
+ * Store an email in Elasticsearch with a unique ID.
+ * @param {Object} email - The email object.
+ */
 const storeEmail = async (email) => {
   try {
     await elasticClient.index({
       index: 'emails',
+      id: `${email.account}-${Date.now()}`, // ✅ Ensure unique ID
       body: email,
     });
-    console.log(`📥 Email stored in Elasticsearch: ${email.subject}`);
+    console.log(`📥 Email stored in Elasticsearch: ${email.subject}, Category: ${email.category}`);
   } catch (error) {
     console.error('❌ Failed to store email in Elasticsearch:', error);
   }
 };
 
+/**
+ * Search for emails with a query, optionally filtered by folder & account.
+ * @param {string} query - The search query.
+ * @param {string} [folder] - Optional folder filter.
+ * @param {string} [account] - Optional account filter.
+ * @returns {Array} - Array of matching emails.
+ */
 const searchEmails = async (query, folder, account) => {
   try {
     const searchParams = {
@@ -56,7 +60,9 @@ const searchEmails = async (query, folder, account) => {
       body: {
         query: {
           bool: {
-            must: [{ match: { body: query } }],
+            must: [
+              { multi_match: { query, fields: ['subject', 'body', 'from'] } }, // ✅ Search by subject, body, or sender
+            ],
             filter: [],
           },
         },
@@ -74,5 +80,12 @@ const searchEmails = async (query, folder, account) => {
   }
 };
 
+/**
+ * Initialize Elasticsearch settings when the server starts.
+ */
+const initializeElasticsearch = async () => {
+  await ensureIndexExists();
+  console.log('✅ Elasticsearch index verified.');
+};
 
-module.exports = { storeEmail, searchEmails ,indexEmail};
+module.exports = { storeEmail, searchEmails, initializeElasticsearch };
