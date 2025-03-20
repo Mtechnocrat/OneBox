@@ -14,8 +14,14 @@ connectDB();
 // Start IMAP persistent connection
 startImapConnection();
 
+
+
 // API Routes
 app.use('/api/emails', emailRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+
+const { checkElasticsearchConnection } = require('./config/db');
+
+checkElasticsearchConnection();

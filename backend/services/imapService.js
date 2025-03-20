@@ -1,5 +1,6 @@
 const Imap = require('imap');
 const { simpleParser } = require('mailparser');
+const { storeEmail } = require('./elasticsearchService'); // Store emails in Elasticsearch
 require('dotenv').config();
 
 const imapConfig = {
@@ -9,11 +10,17 @@ const imapConfig = {
   port: 993,
   tls: true,
   tlsOptions: { rejectUnauthorized: false },
+  debug: console.log,
 };
 
 let imap;
 
 const startImapConnection = () => {
+  if (imap) {
+    console.log('⚠️ IMAP connection already exists. Closing...');
+    imap.end();
+  }
+
   imap = new Imap(imapConfig);
 
   imap.once('ready', () => {
@@ -43,27 +50,25 @@ const openInbox = () => {
     console.log(`📂 INBOX Opened. Total Messages: ${box.messages.total}`);
 
     // Listen for new emails
+    imap.removeAllListeners('mail'); // Prevent duplicate listeners
     imap.on('mail', (numNewMsgs) => {
       console.log(`📩 ${numNewMsgs} new email(s) received!`);
       fetchLatestEmail();
     });
 
-    // Start sending NOOP commands to keep connection alive
-    keepAlive();
+    // Send NOOP every 5 minutes to keep connection alive
+    setInterval(() => {
+      if (imap.state === 'authenticated') {
+        console.log('🔄 Sending NOOP to keep IMAP connection alive...');
+        imap.noop();
+      } else {
+        console.log('⚠️ IMAP connection is not authenticated.');
+      }
+    }, 300000); // Every 5 minutes
   });
 };
 
-// Periodically send a NOOP command every 5 minutes to keep IMAP alive
-const keepAlive = () => {
-  setInterval(() => {
-    if (imap.state === 'authenticated') {
-      console.log('🔄 Sending NOOP to keep IMAP connection alive...');
-      imap.noop();
-    }
-  }, 300000); // Every 5 minutes
-};
-
-// Fetch the latest email when a new one arrives
+// Fetch and store new emails in Elasticsearch
 const fetchLatestEmail = () => {
   imap.search(['ALL'], (err, results) => {
     if (err || results.length === 0) {
@@ -75,20 +80,46 @@ const fetchLatestEmail = () => {
     const fetch = imap.fetch(latestEmailSeq.toString(), { bodies: '' });
 
     fetch.on('message', (msg) => {
-      msg.on('body', (stream) => {
-        simpleParser(stream, (err, parsed) => {
-          if (err) {
-            console.error('Parsing error:', err);
-            return;
-          }
+      let emailData = '';
 
-          console.log('\n📧 New Email Received 📧');
-          console.log(`🔹 Subject: ${parsed.subject}`);
-          console.log(`🔹 From: ${parsed.from?.text || "Unknown Sender"}`);
-          console.log(`🔹 Date: ${parsed.date}`);
-          console.log(`🔹 Body Preview: ${parsed.text?.substring(0, 200) || "(No text content)"}...`);
+      msg.on('body', (stream) => {
+        stream.on('data', (chunk) => {
+          emailData += chunk.toString();
+        });
+
+        stream.on('end', async () => {
+          simpleParser(emailData, async (err, parsed) => {
+            if (err) {
+              console.error('❌ Parsing error:', err);
+              return;
+            }
+
+            console.log('\n📧 New Email Received 📧');
+            console.log(`🔹 Subject: ${parsed.subject}`);
+            console.log(`🔹 From: ${parsed.from?.text || "Unknown Sender"}`);
+            console.log(`🔹 Date: ${parsed.date}`);
+            console.log(`🔹 Body Preview: ${parsed.text?.substring(0, 200) || "(No text content)"}...`);
+
+            // Store email in Elasticsearch
+            await storeEmail({
+              subject: parsed.subject,
+              from: parsed.from?.text || "Unknown Sender",
+              date: parsed.date,
+              body: parsed.text || "(No text content)",
+              folder: "INBOX",
+              account: imapConfig.user,
+            });
+          });
         });
       });
+    });
+
+    fetch.once('error', (err) => {
+      console.error('❌ Fetch error:', err);
+    });
+
+    fetch.once('end', () => {
+      console.log('✅ Email fetch complete.');
     });
   });
 };
