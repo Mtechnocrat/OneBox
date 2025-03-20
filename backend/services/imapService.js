@@ -1,6 +1,6 @@
 const Imap = require('imap');
 const { simpleParser } = require('mailparser');
-const { storeEmail } = require('./elasticsearchService'); // Store emails in Elasticsearch
+const { storeEmail } = require('./elasticsearchService');
 require('dotenv').config();
 
 const imapConfig = {
@@ -56,19 +56,36 @@ const openInbox = () => {
       fetchLatestEmail();
     });
 
-    // Send NOOP every 5 minutes to keep connection alive
-    setInterval(() => {
-      if (imap.state === 'authenticated') {
-        console.log('🔄 Sending NOOP to keep IMAP connection alive...');
-        imap.noop();
-      } else {
-        console.log('⚠️ IMAP connection is not authenticated.');
-      }
-    }, 300000); // Every 5 minutes
+    // ✅ Keep IMAP connection alive every 5 minutes
+    setInterval(keepImapAlive, 5 * 60 * 1000);
+    // ✅ Auto-reconnect if IMAP goes idle for 10 minutes
+    setInterval(reconnectIfIdle, 10 * 60 * 1000);
   });
 };
 
-// Fetch and store new emails in Elasticsearch
+// ✅ Function to Keep IMAP Connection Alive
+const keepImapAlive = () => {
+  if (imap.state === 'authenticated') {
+    console.log('🔄 Running IMAP keep-alive command...');
+    imap.search(['ALL'], (err) => {
+      if (err) console.error('⚠️ IMAP keep-alive failed:', err);
+      else console.log('✅ IMAP connection is active.');
+    });
+  } else {
+    console.log('⚠️ IMAP connection lost. Reconnecting...');
+    reconnectImap();
+  }
+};
+
+// ✅ Function to Check for Idle Connection & Reconnect
+const reconnectIfIdle = () => {
+  if (imap.state !== 'authenticated') {
+    console.log('⚠️ IMAP connection idle. Reconnecting...');
+    reconnectImap();
+  }
+};
+
+// ✅ Fetch and Store New Emails in Elasticsearch
 const fetchLatestEmail = () => {
   imap.search(['ALL'], (err, results) => {
     if (err || results.length === 0) {
@@ -124,7 +141,7 @@ const fetchLatestEmail = () => {
   });
 };
 
-// Reconnect if IMAP connection closes
+// ✅ Function to Reconnect IMAP if Disconnected
 const reconnectImap = () => {
   console.log('🔄 Reconnecting to IMAP server in 5 seconds...');
   setTimeout(startImapConnection, 5000);
