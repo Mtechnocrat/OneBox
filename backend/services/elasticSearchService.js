@@ -61,7 +61,7 @@ const searchEmails = async (query, folder, account) => {
         query: {
           bool: {
             must: [
-              { multi_match: { query, fields: ['subject', 'body', 'from'] } }, // ✅ Search by subject, body, or sender
+              { multi_match: { query, fields: ['subject', 'body', 'from'] } }, 
             ],
             filter: [],
           },

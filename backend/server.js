@@ -2,7 +2,10 @@ const express = require('express');
 const dotenv = require('dotenv');
 const { connectDB } = require('./config/db');
 const emailRoutes = require('./routes/emailRoutes');
+const cors = require('cors'); 
 const { startImapConnection } = require('./services/imapService');
+
+
 
 dotenv.config();
 const app = express();

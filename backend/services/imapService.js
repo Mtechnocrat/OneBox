@@ -85,6 +85,65 @@ const reconnectIfIdle = () => {
   }
 };
 
+const fetchLast30DaysEmails = async () => {
+  return new Promise((resolve, reject) => {
+    const imap = new Imap(imapConfig);
+
+    imap.once('ready', () => {
+      imap.openBox('INBOX', false, () => {
+        const sinceDate = new Date();
+        sinceDate.setDate(sinceDate.getDate() - 30);
+        const formattedSinceDate = sinceDate.toISOString().split('T')[0];
+
+        imap.search([['SINCE', formattedSinceDate]], (err, results) => {
+          if (err || results.length === 0) {
+            console.log('No emails found in the last 30 days.');
+            imap.end();
+            return resolve([]);
+          }
+
+          const fetchedEmails = [];
+          const fetch = imap.fetch(results, { bodies: '' });
+
+          fetch.on('message', (msg, seqno) => {
+            msg.on('body', (stream) => {
+              simpleParser(stream, (err, parsed) => {
+                if (err) {
+                  console.error('Parsing error:', err);
+                  return;
+                }
+
+                const bodyText = parsed.text || parsed.html || "(No text content available)";
+
+                fetchedEmails.push({
+                  subject: parsed.subject,
+                  from: parsed.from?.text || "Unknown Sender",
+                  date: parsed.date,
+                  bodyPreview: bodyText.substring(0, 200) + "...",
+                });
+              });
+            });
+          });
+
+          fetch.on('end', () => {
+            console.log('✅ Fetched all emails from the last 30 days.');
+            imap.end();
+            resolve(fetchedEmails);
+          });
+        });
+      });
+    });
+
+    imap.once('error', (err) => {
+      console.error('IMAP Connection Error:', err);
+      reject(err);
+    });
+
+    imap.connect();
+  });
+};
+
+
 // ✅ Fetch and Store New Emails in Elasticsearch
 const { classifyEmail } = require('./aiService'); // Import AI model for classification
 
@@ -155,4 +214,4 @@ const reconnectImap = () => {
   setTimeout(startImapConnection, 5000000);
 };
 
-module.exports = { startImapConnection };
+module.exports = { startImapConnection , fetchLast30DaysEmails };
