@@ -67,7 +67,7 @@ This project is a **real-time email processing system** that:
 
 ### **1️⃣ Clone the Repository**
 ```bash
-git clone https://github.com/yourusername/Email-Processing-System.git
+git clone https://github.com/Mtechnocrat/OneBox.git
 cd Email-Processing-System
 ```
 
